@@ -1,0 +1,45 @@
+# Standalone file: docker compose -f compose.hardware.yaml up -d
+# deploy/install.py prepares the host directories and I2C permissions automatically.
+name: pi-control
+services:
+  pi-control:
+    image: pi-control:1.5.0
+    build: .
+    restart: unless-stopped
+    ports: ["${PC_BIND:-127.0.0.1}:${PC_PORT:-8080}:8080"]
+    environment:
+      TZ: Asia/Shanghai
+      PC_SIMULATE: "0"
+      PC_DEMO: "0"
+      PC_DEVICE_NAME: "${PC_DEVICE_NAME:-raspberrypi}"
+      PC_I2C_ROOT: /dev/pi-control
+      PC_I2C_BUSES: "${PC_I2C_BUSES:-1}"
+      PC_BOOTSTRAP: /run/secrets/bootstrap.json
+      PC_DISCOVERY_FILE: /run/pi-control-discovery/peers.json
+    group_add: ["${PC_I2C_GID:-988}"]
+    device_cgroup_rules: ["c 89:* rw"]
+    volumes:
+      - type: bind
+        source: /dev/pi-control
+        target: /dev/pi-control
+        bind: {create_host_path: false}
+      - type: bind
+        source: /run/pi-control-discovery
+        target: /run/pi-control-discovery
+        read_only: true
+        bind: {create_host_path: false}
+      - /sys:/host/sys:ro
+      - /proc/stat:/host/proc/stat:ro
+      - /proc/meminfo:/host/proc/meminfo:ro
+      - /proc/uptime:/host/proc/uptime:ro
+      - control-data:/var/lib/pi-control
+      - ./.secrets/bootstrap.json:/run/secrets/bootstrap.json:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    pids_limit: 128
+    mem_limit: 512m
+    stop_grace_period: 25s
+volumes:
+  control-data:

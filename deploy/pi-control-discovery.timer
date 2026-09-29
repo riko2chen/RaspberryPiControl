@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh the Pi Control device directory
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=15s
+AccuracySec=2s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">Pi Control on %h</name>
+  <service protocol="ipv4">
+    <type>_pi-control._tcp</type>
+    <port>8080</port>
+    <txt-record>product=pi-control</txt-record>
+    <txt-record>protocol=1</txt-record>
+  </service>
+</service-group>

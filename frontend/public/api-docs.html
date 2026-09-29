@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+ <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+ <title>Pi Control API · 开发者文档</title>
+ <link rel="icon" href="/assets/favicon.svg">
+ <link rel="stylesheet" href="/assets/api-docs/swagger-ui.css">
+ <link rel="stylesheet" href="/assets/api-docs/docs.css">
+ <script src="/assets/api-docs/swagger-ui-bundle.js" defer></script>
+ <script src="/assets/api-docs/docs.js" defer></script>
+</head>
+<body>
+ <header class="docs-header"><a href="/" class="docs-brand">Pi Control <span>/ 开发者文档</span></a><nav><a href="#guide">接入指南</a><a href="#reference">接口参考</a><a href="/api/v1/openapi.json" download="pi-control-openapi.json">下载 OpenAPI</a><a href="/">返回控制台 ↗</a></nav></header>
+ <main>
+  <section class="docs-hero"><span class="eyebrow">DEVELOPER REFERENCE</span><h1>让你的应用连接设备。</h1><p>通过 HTTP / JSON 查询树莓派状态，控制灯光、风扇与 OLED，或将它们接入你自己的系统。</p><div class="docs-badges"><span>OpenAPI 3.1</span><span>REST · JSON</span><span>Bearer 认证</span><span>WebSocket</span></div></section>
+  <section id="guide" class="guide-card">
+   <h2>接入指南</h2><p class="muted">从一次状态查询开始，再按需接入控制与实时数据。各接口的参数和响应结构见下方接口参考。</p>
+   <details open><summary>01 · 地址、认证与权限</summary><div class="guide-body">
+    <p>当前实例的基础地址：<code id="api-base">/api/v1</code>。请求和响应默认使用 JSON；时间戳为 Unix 秒，可含小数。</p>
+    <p>在控制台「设置 → 开发者 API」为每个应用创建独立的访问令牌，并按需选择只读或控制权限。</p>
+    <div class="table-scroll"><table><thead><tr><th>权限</th><th>能力</th><th>凭据</th></tr></thead><tbody><tr><td><code>read</code></td><td>状态、历史、场景查询和 OLED 预览</td><td>只读令牌</td></tr><tr><td><code>control</code></td><td>包含 read，并可控制硬件、保存和应用场景</td><td>控制令牌</td></tr><tr><td><code>admin</code></td><td>包含 control，并可管理令牌和其他设备目录</td><td>网页登录会话</td></tr></tbody></table></div>
+    <p>脚本使用 <code>Authorization: Bearer &lt;token&gt;</code>。已登录的浏览器自动携带会话 Cookie；带 Cookie 的写请求还需要 <code>X-Pi-Control: 1</code>。本文档的调试器会自动添加该请求头。</p>
+    <p>点击下方 <strong>Authorize</strong> 可用独立令牌调试，输入完整 <code>pc_…</code> 值即可。调试器不把令牌保存在浏览器持久化存储中。</p>
+   </div></details>
+   <details><summary>02 · 第一次调用：cURL 与 Python</summary><div class="guide-body">
+    <h3>cURL / Bash · 查询状态</h3><pre><code data-origin>export PI_CONTROL_URL="__ORIGIN__"
+read -rsp 'API token: ' PI_CONTROL_TOKEN
+printf '\n'
+export PI_CONTROL_TOKEN
+
+curl --fail-with-body \
+  -H "Authorization: Bearer $PI_CONTROL_TOKEN" \
+  "$PI_CONTROL_URL/api/v1/status"</code></pre>
+    <p>响应包含 <code>version</code>、目标配置 <code>config</code>、最近成功写入状态 <code>applied</code>、实时指标 <code>metrics</code> 和硬件连接信息 <code>hardware</code>。字段及示例见 <a href="#/Status/status">GET /status</a>。</p>
+    <h3>Python 标准库 · 读取配置并将机箱风扇设为 3 档</h3><p>沿用上面的环境变量。此示例会实际修改机箱风扇。</p><pre><code>import json, os, uuid
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+
+base = os.environ["PI_CONTROL_URL"].rstrip("/") + "/api/v1"
+headers = {"Authorization": "Bearer " + os.environ["PI_CONTROL_TOKEN"],
+           "Content-Type": "application/json"}
+
+def call(path, method="GET", body=None):
+    data = None if body is None else json.dumps(body).encode()
+    with urlopen(Request(base + path, data=data, headers=headers,
+                         method=method), timeout=10) as response:
+        return json.load(response)
+
+state = call("/status")
+fan = {**state["config"]["fan"], "mode": "manual", "level": 3}
+command = {"expected_version": state["version"],
+           "request_id": str(uuid.uuid4()), "value": fan}
+try:
+    result = call("/fans/case", "PUT", command)
+    print(result["applied"]["fan"])
+except HTTPError as error:
+    print(error.code, error.read().decode())</code></pre>
+   </div></details>
+   <details><summary>03 · 更新配置、并发与重试</summary><div class="guide-body">
+    <ol><li>GET <code>/status</code> 读取当前 <code>version</code> 及资源配置。</li><li>基于原配置修改需要的字段；<code>value</code> 是替换配置，省略字段会采用默认值。</li><li>使用新的 UUID 作为 <code>request_id</code>，同时提交 <code>expected_version</code> 和 <code>value</code>。</li><li>成功时使用响应中的新状态更新客户端；409 时重新读取，并由客户端决定是否仍要提交。</li></ol>
+    <p>网络超时后，可在事件保留期内用<strong>同一调用者、同一 request_id、同一资源和配置</strong>重试，已成功的操作不会重复执行。服务端会返回当前状态，而不保证是原响应的逐字副本。同一编号用于不同操作会返回 409。</p>
+    <p>503 表示硬件写入失败，目标配置可能已持久化。先查询状态并检查 <code>config</code>、<code>applied</code> 和 <code>hardware.errors</code>；确认需要新操作时，使用新的请求编号。不要对 409 / 503 无条件循环重试。</p>
+    <p>硬件连接配置使用单独的 <code>revision</code> / <code>expected_revision</code>，从 GET <code>/hardware</code> 获取，不使用上面的控制配置版本。</p>
+   </div></details>
+   <details><summary>04 · 历史分页与常见错误</summary><div class="guide-body">
+    <p>事件和 OLED 帧按 id 倒序。首轮 <code>?before=0&amp;limit=30</code>，下一轮把响应的 <code>next</code> 作为 <code>before</code>，直到空页。每页条数限制在 1–100。指标接口按时间窗口查询并在较长范围内抽样。</p>
+    <div class="table-scroll"><table><thead><tr><th>状态码</th><th>含义与处理</th></tr></thead><tbody><tr><td>400</td><td>Host 不被允许；使用局域网、Tailscale 地址或已配置的域名。</td></tr><tr><td>401</td><td>凭据无效或已过期，检查令牌或重新登录。</td></tr><tr><td>403</td><td>权限不足，或浏览器写请求缺少校验头 / 来源不匹配。</td></tr><tr><td>404</td><td>资源不存在或历史已清理。</td></tr><tr><td>409</td><td>版本冲突、部件未连接、频率或数量限制；按 detail 处理。</td></tr><tr><td>413</td><td>声明的请求体超过 32 KiB。</td></tr><tr><td>422</td><td>参数或字段不合法；detail 可为字符串或校验错误数组。</td></tr><tr><td>429</td><td>登录失败过于频繁，五分钟后重试。</td></tr><tr><td>503</td><td>硬件暂不可用或写入失败，检查设备及最新状态。</td></tr></tbody></table></div>
+    <p>普通错误结构为 <code>{"detail":"说明"}</code>。校验错误示例：</p><pre><code>{"detail":[{"type":"missing","loc":["body","expected_version"],"msg":"Field required","input":{}}]}</code></pre>
+   </div></details>
+   <details><summary>05 · WebSocket 实时状态</summary><div class="guide-body">
+    <p>连接 <code id="ws-base">/api/v1/live</code>，每约 0.5 秒接收一份完整状态 JSON。推送包含设备标识，通常不包含调用者的 <code>identity</code>。服务器推送通道不接收控制命令；修改仍通过 HTTP API。</p>
+    <p>服务器客户端在握手时发送 Bearer 请求头；同源浏览器使用已登录的会话 Cookie。浏览器原生 WebSocket 无法设置自定义 Authorization 请求头，服务不接受 URL 查询参数中的令牌。</p>
+    <h3>同源浏览器示例</h3><pre><code>const url = new URL('/api/v1/live', location.origin);
+url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const socket = new WebSocket(url);
+socket.onmessage = event =&gt; {
+  const state = JSON.parse(event.data);
+  console.log(state.metrics.temperature, state.applied);
+};</code></pre>
+    <p>未认证、过期或来源不符时关闭码为 <code>1008</code>。断线时客户端可间隔重连，重连后使用下一份完整状态；本接口没有断点续传，历史变化请查询事件接口。</p>
+   </div></details>
+   <details><summary>06 · 网络与硬件约定</summary><div class="guide-body">
+    <p>同一实例可通过局域网和 Tailscale 地址访问。API 没有开启跨来源浏览器 CORS；独立网页可使用同源代理，服务端集成直接使用 Bearer 认证。其他树莓派有各自独立的账号与令牌。</p>
+    <p>灯珠索引为 0–13。原厂呼吸颜色和节奏由固件运行，API 返回的是模式参数与颜色示意，不是实时亮度传感器数据。机箱风扇无 RPM 反馈，CPU 风扇实际转速来自系统。</p>
+    <p>OLED 为 128×32 单色屏。<code>pixels</code> 解码后为 512 字节，行优先，每行 16 字节，每字节高位在左。像素 <code>(x,y)</code> 位于 <code>data[y*16 + x//8]</code> 的 <code>7-(x%8)</code> 位。</p>
+    <p>参数和响应模型为 OpenAPI 3.1，可下载后导入 Postman 等工具或生成客户端。各接口保留 HTTP 方法、状态码和 JSON 数据结构，客户端名称不会改变接口行为。</p>
+   </div></details>
+  </section>
+  <section id="reference"><div class="reference-heading"><h2>接口参考</h2><p>展开接口查看字段及示例。Try it out → Execute 会向当前设备发送真实请求。</p></div><div id="swagger-ui"></div></section>
+ </main>
+ <footer class="docs-footer">Pi Control API · 文档与调试资源由当前树莓派提供</footer>
+</body></html>

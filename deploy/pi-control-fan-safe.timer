@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Pi Control cooling availability
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=15s
+AccuracySec=2s
+
+[Install]
+WantedBy=timers.target

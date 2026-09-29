@@ -1,0 +1,34 @@
+#!/usr/bin/python3
+"""Best-effort cooling while the Docker controller is absent; never races its lock."""
+import fcntl
+import json
+import errno
+from pathlib import Path
+import sys
+import time
+root=Path('/var/lib/pi-control/state')
+heartbeat=root/'heartbeat'
+if 'force' not in sys.argv and heartbeat.exists() and time.time()-heartbeat.stat().st_mtime<20:
+    raise SystemExit(0)
+with open(root/'i2c.lock','a+') as lock:
+    try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except BlockingIOError:raise SystemExit(0)
+    config=root/'fallback.json'
+    if config.exists():
+        target=json.loads(config.read_text())
+        if not target.get('enabled'):raise SystemExit(0)
+        number=target.get('bus')
+    else:
+        number=1
+    if type(number) is not int or not Path(f'/dev/i2c-{number}').exists():raise SystemExit(0)
+    import smbus
+    bus=smbus.SMBus(number)
+    try:
+        bus.write_byte_data(0x0e,0x08,1)
+        time.sleep(.002)
+        bus.write_byte_data(0x0e,0x09,1)
+    except OSError as exc:
+        if exc.errno in (errno.ENXIO,errno.EREMOTEIO,errno.ENODEV):raise SystemExit(0)
+        raise
+    finally:bus.close()
+    print('Pi Control unavailable: case fan full-speed command sent')

@@ -1,0 +1,26 @@
+#!/usr/bin/python3
+"""Export only explicitly allowed external I2C buses into a stable directory."""
+import grp
+import json
+import os
+import stat
+from pathlib import Path
+directory=Path('/dev/pi-control')
+directory.mkdir(mode=0o755,exist_ok=True)
+config=Path('/etc/pi-control/hardware.json')
+allowed=json.loads(config.read_text()).get('buses',[1]) if config.exists() else [1]
+allowed={int(n) for n in allowed if type(n) is int and 0<=n<=999}
+try:gid=grp.getgrnam('i2c').gr_gid
+except KeyError:gid=0
+wanted=set()
+for number in allowed:
+    source=Path(f'/dev/i2c-{number}')
+    try:info=source.stat()
+    except FileNotFoundError:continue
+    if not stat.S_ISCHR(info.st_mode) or os.major(info.st_rdev)!=89:continue
+    target=directory/source.name;wanted.add(target.name)
+    if target.exists() and (not stat.S_ISCHR(target.stat().st_mode) or target.stat().st_rdev!=info.st_rdev):target.unlink()
+    if not target.exists():os.mknod(target,stat.S_IFCHR|0o660,info.st_rdev)
+    os.chown(target,0,gid);os.chmod(target,0o660)
+for target in directory.glob('i2c-*'):
+    if target.name not in wanted:target.unlink()

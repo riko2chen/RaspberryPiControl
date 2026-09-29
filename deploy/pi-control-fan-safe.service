@@ -1,0 +1,7 @@
+[Unit]
+Description=Pi Control fallback case cooling
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/pi-control-fan-safe

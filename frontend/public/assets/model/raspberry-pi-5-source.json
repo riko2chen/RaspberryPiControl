@@ -1,0 +1,17 @@
+{
+  "source": "https://pip.raspberrypi.com/documents/RP-010083-CA",
+  "source_archive": "rpi-5 3D STEP - No Graphics small file",
+  "author": "Raspberry Pi Ltd",
+  "license": "MIT",
+  "source_step_sha256": "78164070c1cc7ab854382950d2e85926c6e35432f1e5a146b733397a7c6afb44",
+  "source_solids": 2711,
+  "source_triangles": 830016,
+  "web_triangles": 329076,
+  "glb_bytes": 8968032,
+  "glb_sha256": "446cf187e0024c94a72d14ee23d1a27b135ad00aeb2a6b2530dadf11c5ef3a6a",
+  "units": "millimeters",
+  "tessellation_linear_deflection_mm": 0.1,
+  "simplification_relative_error": 0.0008,
+  "compression": "native gzip; KHR_mesh_quantization; no WASM",
+  "gzip_bytes": 2921346
+}

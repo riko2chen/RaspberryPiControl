@@ -1,0 +1,75 @@
+/* Physical CUBE Pi layout. Colour belongs to emitters, not a glass overlay. */
+.case-stage{position:relative;isolation:isolate;padding-top:4px}
+.case-view-label{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--muted);padding:0 2px;margin-bottom:0}
+.case-view-label>span:first-child{letter-spacing:1.4px;font-weight:600;font-size:9px}
+.case-drawing{display:block;width:100%;max-width:530px;height:auto;margin:-3px auto -1px;overflow:visible}
+.case-ground{fill:var(--text);opacity:.06}
+.case-glass{fill:var(--accent);fill-opacity:.025;stroke:var(--line);stroke-width:1}
+.case-glass.side{fill-opacity:.045}.case-glass.roof{fill-opacity:.035}
+.case-frame{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.case-frame.rear{stroke:#a5b2c3;stroke-width:6;opacity:.7}
+.case-frame.depth{stroke:#bbc6d4;stroke-width:5}.case-frame.front{stroke:#d0d9e4;stroke-width:7}
+.case-glass-edge{fill:none;stroke:#d1dce8;stroke-width:1.2;opacity:.8}
+.case-wire{fill:none;stroke-width:2;stroke-linecap:round}
+.case-wire.black{stroke:#4b5667}.case-wire.red{stroke:#a35764}.case-wire.blue{stroke:#56829d}.case-wire.yellow{stroke:#ae985c}
+.case-pcb-text{fill:#b9c6d7;font:8px monospace;letter-spacing:1px}
+.case-adapter-text{fill:#62748b;font:italic 10px sans-serif;letter-spacing:2px}
+.case-callout{fill:none;stroke:var(--muted);stroke-width:.7;stroke-opacity:.5;pointer-events:none}
+.case-callout text{stroke:none;fill:var(--muted);font-size:9px;font-family:inherit}
+.case-oled{width:128px;height:32px;background:#0a1514}
+.case-oled .oled-canvas{display:block;width:128px;height:32px;image-rendering:pixelated;border-radius:0}
+.case-drawing .fan-visual{background:linear-gradient(135deg,#313a48,#121922);border-color:#45505f;box-shadow:inset 0 0 0 3px #ffffff06}
+.case-drawing .fan-grill{background:radial-gradient(circle,#1f2937,#131b27);border-color:#66748850;box-shadow:0 0 0 3px #101722}
+.case-drawing .fan-blades{fill:#536173;color:#75859b;filter:none}
+.case-drawing .fan-hub{background:radial-gradient(circle at 35% 30%,#4a5667,#202938);border-color:#738096;inset:34%}
+.case-drawing .fan-screw{width:5px;height:5px;background:#b2bdce;box-shadow:inset 0 0 0 1px #48566a}
+.case-fan-top .fan-visual{background:#b5c4d166;border:2px solid #b0c1d1;box-shadow:inset 0 0 0 3px #ffffff16}
+.case-fan-top .fan-grill{background:#90a6bb24;box-shadow:none;border-color:#7d96ad}
+.case-fan-top .fan-blades{fill:#a8bbce;color:#b6c9dc}
+.case-fan-top .fan-hub{background:#7d91a9;border-color:#b7c7d7;inset:37%}
+.case-part-unavailable{opacity:.25}
+.case-rgb-strip{width:271px;height:30px;display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:2px;align-items:center;padding:5px 4px;background:linear-gradient(#253344,#121b28);border:1px solid #7f91a7;border-radius:4px;box-shadow:inset 0 1px 0 #ffffff20}
+.case-rgb-strip .led-cell{display:grid;place-items:center;width:100%;height:20px;min-width:0;min-height:0;padding:0;background:transparent;border:0;border-radius:2px;cursor:pointer}
+.case-rgb-strip .led-emitter{width:11px;height:11px;border-radius:3px;box-shadow:0 0 5px 1px var(--led-glow),0 0 10px var(--led-halo);border:1px solid #ffffff38}
+.case-rgb-strip .led-cell:hover{background:#ffffff45}.case-rgb-strip .led-cell:focus-visible{outline:2px solid #fff;outline-offset:1px}
+.case-status-row{display:flex;justify-content:center;gap:12px 24px;flex-wrap:wrap;margin:4px 0 9px;color:var(--muted);font-size:11px}
+.case-status-row>span{display:flex;align-items:center;gap:7px}
+.case-status-row b{font-weight:500;color:var(--text);margin-left:5px;font-variant-numeric:tabular-nums}
+.case-notes{display:flex;justify-content:center;gap:6px 14px;flex-wrap:wrap;font-size:10px;color:var(--muted);text-align:center;line-height:1.5}
+.case-notes>span{display:flex;gap:4px;align-items:center;justify-content:center}
+@media(max-width:700px){.case-view-label{font-size:9px}.case-drawing{margin:6px auto}.case-status-row{font-size:10px;gap:10px 14px;margin:8px 0}.case-notes{font-size:9px;gap:4px}}
+
+/* WebGL product viewer: a quiet studio around the hardware. */
+.cube-experience{position:relative;padding-top:4px}
+.cube-toolbar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;margin:0 0 12px}
+.cube-view-tabs{display:flex;gap:2px;border:1px solid var(--line);background:var(--input);border-radius:8px;padding:3px}
+.cube-view-tabs button{font-size:10px;color:var(--muted);padding:6px 12px;border-radius:5px;line-height:1.2}
+.cube-view-tabs button[aria-pressed=true]{background:var(--surface);color:var(--text);box-shadow:0 1px 4px #15233c10}
+.cube-tools{display:flex;gap:3px}.cube-tools button{display:grid;place-items:center;width:28px;height:28px;color:var(--muted);border-radius:6px}
+.cube-tools button:hover,.cube-tools button[aria-pressed=true]{color:var(--accent);background:var(--soft)}
+.cube-toolbar button:disabled{opacity:.4;cursor:wait}
+.cube-viewport{position:relative;isolation:isolate;overflow:hidden;height:470px;min-height:310px;border-radius:12px;background:radial-gradient(ellipse at 45% 37%,#fdfefe 0%,#eef2f7 65%,#e6ebf2 100%);border:1px solid var(--line)}
+[data-theme=dark] .cube-viewport{background:radial-gradient(ellipse at 45% 37%,#2c3544 0%,#1d2531 65%,#171f2a 100%)}
+.cube-canvas-host{position:absolute;inset:0}
+.cube-webgl{display:block;width:100%;height:100%;outline-offset:-3px;cursor:grab}
+.cube-webgl:active{cursor:grabbing}
+.cube-scene-title{position:absolute;top:20px;left:20px;z-index:1;display:grid;gap:5px;pointer-events:none}
+.cube-scene-title>span{font-size:10px;letter-spacing:2.5px;font-weight:600;color:var(--muted)}
+.cube-scene-title small{font-size:9px;color:var(--muted);opacity:.7}
+.cube-orbit-hint{position:absolute;bottom:16px;left:20px;display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);pointer-events:none}
+.cube-orientation{position:absolute;bottom:16px;right:20px;letter-spacing:2px;font-size:8px;color:var(--muted);pointer-events:none}
+.cube-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;font-size:12px;color:var(--muted);background:var(--input)}
+.cube-live-strip{display:flex;align-items:center;gap:16px;padding:15px 2px 12px;flex-wrap:wrap}
+.cube-live-strip>div:first-child{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);white-space:nowrap}
+.cube-live-strip small{font-size:9px;opacity:.65;margin-left:3px}
+.cube-led-controls{display:flex;gap:7px;flex:1;min-width:190px;align-items:center;justify-content:space-between;padding:9px 12px;border-radius:7px;background:#16202d}
+.cube-led-controls .led-cell{padding:4px 2px;border:0;background:transparent;display:grid;place-items:center;min-width:0;flex:1;border-radius:3px}
+.cube-led-controls .led-emitter{width:8px;height:8px;border-radius:2px;box-shadow:0 0 5px var(--led-glow),0 0 10px var(--led-halo)}
+.cube-led-controls .led-cell:hover{background:#ffffff24}.cube-led-controls .led-cell:focus-visible{outline:1px solid #fff;outline-offset:2px}
+.cube-experience .case-status-row{margin:3px 0 8px}.cube-experience .case-notes{padding-bottom:1px}
+.cube-experience.expanded{position:fixed;inset:18px;z-index:110;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 24px;box-shadow:0 0 0 100vmax #0a111bd9;display:flex;flex-direction:column;overflow:auto}
+.cube-experience.expanded .cube-viewport{height:auto;flex:1;min-height:250px}
+.cube-experience.expanded .cube-live-strip{max-width:740px;width:100%;align-self:center}
+.model-fallback-note{font-size:11px;color:var(--muted);margin-bottom:15px}
+@media(min-width:1400px){.cube-viewport{height:510px}}
+@media(max-width:700px){.cube-viewport{height:370px}.cube-view-tabs button{padding:6px 8px;font-size:9px}.cube-toolbar{gap:4px}.cube-tools{gap:0}.cube-tools button{width:25px}.cube-scene-title{top:14px;left:14px}.cube-orbit-hint{left:14px;bottom:13px;font-size:8px}.cube-orientation{right:14px;bottom:13px;font-size:7px}.cube-live-strip{gap:9px;padding:12px 0}.cube-led-controls{gap:4px;padding:7px 9px}.cube-live-strip>div:first-child{font-size:9px}.cube-experience.expanded{inset:6px;padding:12px;border-radius:12px}.cube-experience.expanded .cube-viewport{min-height:240px}}

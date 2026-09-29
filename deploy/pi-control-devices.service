@@ -1,0 +1,12 @@
+[Unit]
+Description=Expose optional Pi Control I2C adapters
+Before=pi-control.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/pi-control-devices
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/dev
+CapabilityBoundingSet=CAP_MKNOD CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE

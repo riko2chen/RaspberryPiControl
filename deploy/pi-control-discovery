@@ -1,0 +1,29 @@
+#!/usr/bin/python3
+"""Publish a bounded Avahi browse result for the unprivileged container."""
+import ipaddress
+import json
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+def unescape(value):
+    return re.sub(r'\\(\d{3})',lambda m:chr(int(m[1])),value)
+items=[];error=None
+try:
+    result=subprocess.run(['/usr/bin/avahi-browse','--resolve','--terminate','--parsable','--no-db-lookup','_pi-control._tcp'],capture_output=True,text=True,timeout=8,check=True)
+    for line in result.stdout.splitlines():
+        fields=line.split(';')
+        if len(fields)<9 or fields[0]!='=' or fields[2]!='IPv4':continue
+        address=fields[7];port=int(fields[8])
+        if ipaddress.ip_address(address).version!=4 or not 1<=port<=65535:continue
+        row={'name':unescape(fields[3])[:64],'address':address,'port':port}
+        if row not in items:items.append(row)
+        if len(items)>=64:break
+except (OSError,ValueError,subprocess.SubprocessError) as exc:
+    print(str(exc)[:300],getattr(exc,'stderr','')[:300],file=sys.stderr)
+    error='局域网服务发现暂不可用'
+root=Path('/run/pi-control-discovery');root.mkdir(mode=0o755,exist_ok=True)
+temporary=root/'peers.tmp'
+temporary.write_text(json.dumps({'scanned_at':time.time(),'items':items,'error':error},ensure_ascii=False))
+temporary.chmod(0o644);temporary.replace(root/'peers.json')

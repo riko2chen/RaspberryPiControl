@@ -1,0 +1,34 @@
+/* The emitter stays sharp. Light spills behind it, never across the whole panel. */
+.light-preview{background:linear-gradient(145deg,#151922,#090c12);color:#f4f7ff;box-shadow:inset 0 1px 0 #ffffff0c}
+.light-preview-heading span:first-child{color:#aeb9cb}
+.light-preview-heading strong{color:#f4f7ff}
+.preview-draft-tag{color:#d8e2f3;border-color:#ffffff24}
+.preview-pause{background:#ffffff12;color:#e4ebf7}
+.light-preview>p{color:#aab6c8}
+.light-preview-strip{gap:28px 18px;padding:40px 0 32px}
+.light-preview-strip button{color:#aab6c8;gap:15px}
+.light-preview-strip button:focus-visible{outline:2px solid #d6e3ff;outline-offset:8px;border-radius:6px}
+.light-preview-strip i.led-emitter{width:34px;height:34px;border-radius:50%;border:0;outline:1px solid #ffffff25;outline-offset:6px}
+.light-preview-strip button.selected i.led-emitter{outline-color:#bac9df}
+.light-preview-strip button.selected span{background:#ffffff12;color:#edf3ff}
+.light-preview-strip .led-emitter,.led-cell .led-emitter{
+ display:block;position:relative;flex-shrink:0;
+ background:radial-gradient(ellipse at 42% 36%,var(--led-core) 0 6%,var(--led) 55%);
+ box-shadow:0 0 7px 1px var(--led-glow),0 0 22px 3px var(--led-halo);
+}
+.light-preview-strip [data-off=true] .led-emitter,.led-cell[data-off=true] .led-emitter{background:#232b38;box-shadow:inset 0 0 0 1px #374151}
+.applied-light-strip,.mini-lights{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));background:#10141d;border:1px solid #242c3a;border-radius:10px;gap:10px;padding:20px 16px;isolation:isolate}
+.applied-light-strip .led-cell,.mini-lights .led-cell{min-width:0;padding:0;background:transparent;border-radius:4px}
+.applied-light-strip .led-emitter,.mini-lights .led-emitter{width:100%;height:18px;border:0;border-radius:4px}
+.mini-lights{padding:15px 12px;gap:7px}
+.mini-lights .led-emitter{height:13px}
+.device-lights .led-cell{border-color:#202838;background:#10141d;box-shadow:0 1px 0 #ffffff60;padding:2px}
+.device-lights .led-emitter{width:11px;height:10px;border-radius:2px;box-shadow:0 0 4px var(--led-glow),0 0 8px var(--led-halo)}
+@media(max-width:700px){
+ .light-preview-strip{gap:28px 10px;padding:34px 0 28px}
+ .light-preview-strip i.led-emitter{width:25px;height:25px;outline-offset:4px}
+ .applied-light-strip{grid-template-columns:repeat(7,minmax(0,1fr));gap:17px 12px;padding:19px 15px}
+ .applied-light-strip .led-emitter{height:16px}
+ .mini-lights{grid-template-columns:repeat(7,minmax(0,1fr));gap:9px 6px;padding:10px 8px}
+ .mini-lights .led-emitter{height:9px}
+}

@@ -1,0 +1,6086 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pi Control API",
+    "description": "面向应用、脚本、家庭自动化和第三方集成的 HTTP / JSON API。\n\n基础路径为 `/api/v1`，时间戳使用 Unix 秒。接口按资源分组，提供参数、响应结构与示例。\n\n**认证**：在控制台「设置 → 开发者 API」创建令牌，通过 `Authorization: Bearer <token>` 调用。\n`read` 可查询及生成 OLED 预览，`control` 可修改硬件配置和场景，`admin` 为网页登录会话，可管理令牌与设备目录。\n当前已登录的浏览器可直接调试；也可点击 Authorize 输入完整令牌（不用再输入 Bearer 前缀）。\n\n**控制请求**：先 GET `/status`，再提交 `expected_version`、唯一 `request_id` 和 `value`。\n`value` 是对应资源的替换配置，省略字段使用默认值；保留其余配置时应基于 GET 返回值修改。\n409 时重新读取并处理冲突；503 时目标配置可能已经持久化，应同时检查 `config`、`applied` 与 `hardware.errors`。\n\n**实时数据**：WebSocket `/api/v1/live` 每约 0.5 秒推送完整状态，详见上方接入指南。\n",
+    "version": "1.5.0"
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "检查进程健康",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "version": "1.5.0"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Status"
+        ],
+        "description": "**最低权限：无需认证。**\n\n进程存活检查，不代表硬件已经连接。",
+        "security": [],
+        "x-required-scope": "public"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "检查服务就绪状态",
+        "operationId": "ready",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                },
+                "example": {
+                  "status": "ready"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "硬件管理器未就绪或有通信错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                },
+                "example": {
+                  "status": "hardware-unavailable"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Status"
+        ],
+        "description": "**最低权限：无需认证。**\n\n硬件管理器已初始化且没有记录错误时返回 200；有通信错误时返回 503。未安装的可选部件不阻止服务就绪。",
+        "security": [],
+        "x-required-scope": "public"
+      }
+    },
+    "/api/v1/device": {
+      "get": {
+        "summary": "获取公开设备标识",
+        "operationId": "device_identity",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceIdentity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Status"
+        ],
+        "description": "**最低权限：无需认证。**\n\n供局域网发现使用，不包含配置、地址或凭据。",
+        "security": [],
+        "x-required-scope": "public"
+      }
+    },
+    "/api/v1/hardware": {
+      "get": {
+        "summary": "获取硬件连接状态",
+        "operationId": "hardware_status",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HardwareInventory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Hardware"
+        ],
+        "description": "**最低权限：read。**\n\n返回候选设备、各部件状态及连接配置。扩展板不提供风扇和灯条的插接反馈，应结合实际安装情况配置。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "put": {
+        "summary": "更新硬件连接配置",
+        "operationId": "hardware_config",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HardwareCommand"
+              },
+              "example": {
+                "expected_revision": 1,
+                "value": {
+                  "cube": "auto",
+                  "oled": "auto",
+                  "case_fan": true,
+                  "lights": true,
+                  "screen": true
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HardwareInventory"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Hardware"
+        ],
+        "description": "**最低权限：control。**\n\n使用本接口的 `expected_revision`，不是控制配置的 `expected_version`。先 GET `/hardware` 读取 revision，再提交完整 value。`auto` 自动连接，`off` 不连接，也可指定扫描结果中的设备 id。停用后停止管理并保留物理状态。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/hardware/scan": {
+      "post": {
+        "summary": "重新扫描兼容部件",
+        "operationId": "hardware_scan",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HardwareInventory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Hardware"
+        ],
+        "description": "**最低权限：control。**\n\n检查配置允许的 I²C 总线及兼容地址，并尝试恢复部件。请求完成不等于所有部件可用，请读取 components 和 scan_errors。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "summary": "列出附近及已记住的设备",
+        "operationId": "devices",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceDirectory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Devices"
+        ],
+        "description": "**最低权限：read。**\n\n返回本机发现缓存和服务模式；记住的离线设备会保留，并定期检查。Docker 演示服务也能记住目标地址，选择后进入目标控制台。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/devices/scan": {
+      "post": {
+        "summary": "刷新设备发现",
+        "operationId": "scan_devices",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceDirectory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Devices"
+        ],
+        "description": "**最低权限：admin。**\n\n通过本机 mDNS 发现数据检查其他 Pi Control 实例，并探测已记住地址。扫描正在进行时返回 409。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "admin",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/connect": {
+      "post": {
+        "summary": "检查并记住设备地址",
+        "operationId": "connect_device",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeerAddress"
+              },
+              "example": {
+                "url": "192.168.1.100:8080"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerDevice"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Devices"
+        ],
+        "description": "**最低权限：admin。**\n\n仅支持局域网、Tailscale 和本机 IPv4 地址，或解析到这些地址的域名。返回目标控制台 URL；不会转发当前凭据，也不会代替用户登录目标设备。目标是当前设备时返回 current=true。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "admin",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{ident}": {
+      "delete": {
+        "summary": "移除已记住的设备",
+        "operationId": "forget_device",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          },
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Devices"
+        ],
+        "description": "**最低权限：admin。**\n\n只删除本机保存的记录，不修改目标设备。重复调用也返回成功。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "创建网页登录会话",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Login"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly 登录会话，7 天有效。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "用户名或密码不正确。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "用户名或密码不正确。"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "登录失败次数过多，五分钟后重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "登录失败次数过多，五分钟后重试。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ],
+        "description": "**最低权限：无需认证。**\n\n账号密码正确时通过 Set-Cookie 设置 7 天有效的 HttpOnly / SameSite=Strict 会话；HTTPS 下附带 Secure。每个来源 IP 的 5 分钟窗口最多允许 8 次失败尝试，随后返回 429。",
+        "security": [],
+        "x-required-scope": "public",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "summary": "退出当前网页登录",
+        "operationId": "logout",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ],
+        "description": "**最低权限：read。**\n\n使用会话时撤销当前会话并清除 Cookie；使用 API 令牌调用不会撤销该令牌。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "summary": "获取当前完整状态",
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateSnapshot"
+                },
+                "example": {
+                  "version": 12,
+                  "config": {
+                    "fan": {
+                      "mode": "auto",
+                      "level": 4,
+                      "curve": [
+                        {
+                          "temperature": 35,
+                          "level": 2
+                        },
+                        {
+                          "temperature": 45,
+                          "level": 4
+                        },
+                        {
+                          "temperature": 55,
+                          "level": 6
+                        },
+                        {
+                          "temperature": 65,
+                          "level": 8
+                        },
+                        {
+                          "temperature": 75,
+                          "level": 10
+                        }
+                      ]
+                    },
+                    "lights": {
+                      "enabled": true,
+                      "effect": "static",
+                      "native_color": 1,
+                      "native_speed": 1,
+                      "brightness": 35,
+                      "speed": 1,
+                      "colors": [
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8",
+                        "#8cbaa8"
+                      ]
+                    },
+                    "oled": {
+                      "enabled": true,
+                      "mode": "system",
+                      "text": "你好，树莓派\nPI CONTROL",
+                      "font_size": 12,
+                      "x": 0,
+                      "y": 0,
+                      "invert": false,
+                      "contrast": 160,
+                      "pixels": ""
+                    },
+                    "labels": [
+                      "灯珠 01",
+                      "灯珠 02",
+                      "灯珠 03",
+                      "灯珠 04",
+                      "灯珠 05",
+                      "灯珠 06",
+                      "灯珠 07",
+                      "灯珠 08",
+                      "灯珠 09",
+                      "灯珠 10",
+                      "灯珠 11",
+                      "灯珠 12",
+                      "灯珠 13",
+                      "灯珠 14"
+                    ]
+                  },
+                  "applied": {
+                    "fan": null,
+                    "lights": null,
+                    "oled": null
+                  },
+                  "metrics": {
+                    "temperature": 38.5,
+                    "cpu_fan_rpm": 0,
+                    "cpu_fan_pwm": 0,
+                    "cpu_percent": 2.4,
+                    "memory_percent": 8.1,
+                    "storage_used_percent": 12.0,
+                    "storage_free_gb": 210.5,
+                    "sampled_at": 1790596800.0
+                  },
+                  "hardware": {
+                    "connected": true,
+                    "errors": {},
+                    "simulate": false,
+                    "rgb_count": 14,
+                    "oled_size": [
+                      128,
+                      32
+                    ],
+                    "connection": {
+                      "revision": 1,
+                      "config": {
+                        "cube": "auto",
+                        "oled": "auto",
+                        "case_fan": true,
+                        "lights": true,
+                        "screen": true
+                      },
+                      "scanned_at": 1790596800.0,
+                      "buses": [
+                        1
+                      ],
+                      "candidates": [],
+                      "components": {},
+                      "scan_errors": []
+                    }
+                  },
+                  "cpu_fan_policy": {
+                    "available": false,
+                    "state": null,
+                    "max_state": null,
+                    "steps": []
+                  },
+                  "fan_presets": [],
+                  "animation": {
+                    "write_fps": 0.0,
+                    "target_fps": 30
+                  },
+                  "safety_override": false,
+                  "server_time": 1790596800.0,
+                  "started_at": 1790593200.0,
+                  "frames_sent": 100,
+                  "retention": {
+                    "metrics_days": 7,
+                    "oled_max_frames": 100000,
+                    "oled_max_days": 7,
+                    "events_max": 50000
+                  },
+                  "device": {
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "name": "pi-example",
+                    "product": "pi-control",
+                    "protocol": 1,
+                    "version": "1.4.0"
+                  },
+                  "identity": {
+                    "name": "example-client",
+                    "scope": "read"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Status"
+        ],
+        "description": "**最低权限：read。**\n\n`config` 为目标配置，`applied` 为最近成功写入状态。读取 `version` 后再提交控制操作。CPU 风扇转速位于 `metrics.cpu_fan_rpm`，系统温控阈值位于 `cpu_fan_policy`。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/fans/case": {
+      "put": {
+        "summary": "设置机箱风扇",
+        "operationId": "fan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FanCommand"
+              },
+              "example": {
+                "expected_version": 12,
+                "request_id": "2b126436-4ddc-4f01-83ec-60c062974827",
+                "value": {
+                  "mode": "manual",
+                  "level": 3,
+                  "curve": [
+                    {
+                      "temperature": 35,
+                      "level": 2
+                    },
+                    {
+                      "temperature": 45,
+                      "level": 4
+                    },
+                    {
+                      "temperature": 55,
+                      "level": 6
+                    },
+                    {
+                      "temperature": 65,
+                      "level": 8
+                    },
+                    {
+                      "temperature": 75,
+                      "level": 10
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateSnapshot"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Fans"
+        ],
+        "description": "**最低权限：control。**\n\n`value` 替换机箱风扇配置。`level=0` 关闭，1–10 从慢到快；自动模式使用 `curve`，温度递增且档位不递减。温度保护可覆盖手动档位，请查看 `safety_override` 和 `applied.fan`。CPU 散热风扇由内核管理，当前没有 CPU 风扇写入接口。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/lights": {
+      "put": {
+        "summary": "设置灯条",
+        "operationId": "lights",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LightsCommand"
+              },
+              "example": {
+                "expected_version": 12,
+                "request_id": "2b126436-4ddc-4f01-83ec-60c062974827",
+                "value": {
+                  "enabled": true,
+                  "effect": "native_breathe",
+                  "native_color": 4,
+                  "native_speed": 1,
+                  "brightness": 35,
+                  "speed": 1,
+                  "colors": [
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8",
+                    "#8cbaa8"
+                  ]
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateSnapshot"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Lights"
+        ],
+        "description": "**最低权限：control。**\n\n`value` 替换完整灯光配置。常亮、彩虹流动、追光使用 `brightness` 和 `speed`。原厂呼吸由固件播放，使用 `native_color` 和 `native_speed`，不使用软件亮度、速度及逐灯颜色。原厂颜色：0 红、1 绿、2 蓝、3 黄、4 紫、5 青、6 白；速度 1 慢、2 中、3 快。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/lights/{index}": {
+      "patch": {
+        "summary": "修改一颗灯珠的颜色",
+        "operationId": "one_light",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Index",
+              "minimum": 0,
+              "maximum": 13
+            },
+            "description": "灯珠索引，0–13。"
+          },
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LightColorCommand"
+              },
+              "example": {
+                "expected_version": 12,
+                "request_id": "2b126436-4ddc-4f01-83ec-60c062974827",
+                "value": {
+                  "color": "#ff8800"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateSnapshot"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Lights"
+        ],
+        "description": "**最低权限：control。**\n\n索引从 **0 到 13**。只接受 `value.color`，修改后灯效切换为常亮；其他灯珠、总开关和整体亮度保持原值。灯条关闭时，此操作不会自动打开灯条。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control"
+      }
+    },
+    "/api/v1/oled": {
+      "put": {
+        "summary": "设置屏幕",
+        "operationId": "oled",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OledCommand"
+              },
+              "example": {
+                "expected_version": 12,
+                "request_id": "2b126436-4ddc-4f01-83ec-60c062974827",
+                "value": {
+                  "enabled": true,
+                  "mode": "text",
+                  "text": "Hello, Pi Control",
+                  "font_size": 12,
+                  "x": 0,
+                  "y": 0,
+                  "invert": false,
+                  "contrast": 160,
+                  "pixels": ""
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateSnapshot"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OLED"
+        ],
+        "description": "**最低权限：control。**\n\n`value` 替换 OLED 配置。支持系统信息、时钟、文字、像素画布和轮播。像素模式要求 `pixels` 为 512 字节的 Base64 位图。坐标原点在左上角，按行排列，每行 16 字节，每字节高位对应左侧像素。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/labels": {
+      "put": {
+        "summary": "设置灯珠名称",
+        "operationId": "labels",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelsCommand"
+              },
+              "example": {
+                "expected_version": 12,
+                "request_id": "2b126436-4ddc-4f01-83ec-60c062974827",
+                "value": {
+                  "labels": [
+                    "LED 01",
+                    "LED 02",
+                    "LED 03",
+                    "LED 04",
+                    "LED 05",
+                    "LED 06",
+                    "LED 07",
+                    "LED 08",
+                    "LED 09",
+                    "LED 10",
+                    "LED 11",
+                    "LED 12",
+                    "LED 13",
+                    "LED 14"
+                  ]
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateSnapshot"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Lights"
+        ],
+        "description": "**最低权限：control。**\n\n一次提交恰好 14 个名称，每个 1–24 字符且不能全为空白。此接口只修改名称，不改变灯光输出。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/oled/preview": {
+      "post": {
+        "summary": "生成屏幕预览",
+        "operationId": "preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Oled"
+              },
+              "example": {
+                "enabled": true,
+                "mode": "text",
+                "text": "Hello, Pi Control",
+                "font_size": 12,
+                "x": 0,
+                "y": 0,
+                "invert": false,
+                "contrast": 160,
+                "pixels": ""
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewFrame"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OLED"
+        ],
+        "description": "**最低权限：read。**\n\n根据传入配置生成位图，不写入屏幕，也不修改设备配置。请求体直接使用 Oled 对象，无需命令封装。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/oled/frame": {
+      "get": {
+        "summary": "获取最近写入的屏幕帧",
+        "operationId": "frame",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/OledFrame"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OLED"
+        ],
+        "description": "**最低权限：read。**\n\n没有成功写入记录时返回 JSON `null`。画面是最近成功发送的位图，不是摄像头采集。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "summary": "查询操作事件",
+        "operationId": "events",
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Before"
+            },
+            "description": "首轮传 0；后续使用上一页 next，只返回 id 小于该值的记录。"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "title": "Limit"
+            },
+            "description": "每页条数，服务端限制在 1–100；超出范围会被截取到边界。"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Kind"
+            },
+            "description": "事件类型前缀，例如 lights、fan、hardware。底层使用 SQL LIKE，% 和 _ 具有通配语义。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "History"
+        ],
+        "description": "**最低权限：read。**\n\n按 id 倒序分页。将响应 `next` 传入下一次的 `before`，直到返回空页。最多保留 50,000 条。`before` / `after` 是配置快照或相应事件数据，结构取决于 `kind`。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "summary": "查询性能指标",
+        "operationId": "metrics",
+        "parameters": [
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 1,
+              "title": "Hours"
+            },
+            "description": "最近多少小时，服务端限制在 0.05–168。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricHistory"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "History"
+        ],
+        "description": "**最低权限：read。**\n\n时间升序，原始指标约每 10 秒记录，保留 7 天；长时间范围会抽样以减少响应体积，返回点数并非固定。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/frames": {
+      "get": {
+        "summary": "查询屏幕帧历史",
+        "operationId": "frames",
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Before"
+            },
+            "description": "首轮传 0；后续使用上一页 next，只返回 id 小于该值的记录。"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "每页条数，服务端限制在 1–100；超出范围会被截取到边界。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FramePage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OLED"
+        ],
+        "description": "**最低权限：read。**\n\n按 id 倒序分页，只返回元信息；通过 `/frames/{frame_id}` 获取完整位图。记录最多保留 7 天或 100,000 帧，以先达到者为准。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/frames/{frame_id}": {
+      "get": {
+        "summary": "获取历史屏幕帧",
+        "operationId": "historical_frame",
+        "parameters": [
+          {
+            "name": "frame_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Frame Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalFrame"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或已清理。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "资源不存在或已清理。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OLED"
+        ],
+        "description": "**最低权限：read。**\n\n不存在或已清理的帧返回 404。位图格式与当前帧相同。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/scenes": {
+      "get": {
+        "summary": "列出场景",
+        "operationId": "scenes",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SceneList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Scenes"
+        ],
+        "description": "**最低权限：read。**\n\n包含内置场景及用户保存的场景，内置场景优先。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "post": {
+        "summary": "保存场景",
+        "operationId": "save_scene",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SceneRequest"
+              },
+              "example": {
+                "name": "阅读",
+                "icon": "leaf",
+                "config": {
+                  "fan": {
+                    "mode": "auto",
+                    "level": 4,
+                    "curve": [
+                      {
+                        "temperature": 35,
+                        "level": 2
+                      },
+                      {
+                        "temperature": 45,
+                        "level": 4
+                      },
+                      {
+                        "temperature": 55,
+                        "level": 6
+                      },
+                      {
+                        "temperature": 65,
+                        "level": 8
+                      },
+                      {
+                        "temperature": 75,
+                        "level": 10
+                      }
+                    ]
+                  },
+                  "lights": {
+                    "enabled": true,
+                    "effect": "static",
+                    "native_color": 1,
+                    "native_speed": 1,
+                    "brightness": 35,
+                    "speed": 1,
+                    "colors": [
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8",
+                      "#8cbaa8"
+                    ]
+                  },
+                  "oled": {
+                    "enabled": true,
+                    "mode": "system",
+                    "text": "你好，树莓派\nPI CONTROL",
+                    "font_size": 12,
+                    "x": 0,
+                    "y": 0,
+                    "invert": false,
+                    "contrast": 160,
+                    "pixels": ""
+                  },
+                  "labels": [
+                    "灯珠 01",
+                    "灯珠 02",
+                    "灯珠 03",
+                    "灯珠 04",
+                    "灯珠 05",
+                    "灯珠 06",
+                    "灯珠 07",
+                    "灯珠 08",
+                    "灯珠 09",
+                    "灯珠 10",
+                    "灯珠 11",
+                    "灯珠 12",
+                    "灯珠 13",
+                    "灯珠 14"
+                  ]
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedId"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Scenes"
+        ],
+        "description": "**最低权限：control。**\n\n保存完整配置，不立即应用到设备。场景总数上限为 32。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/scenes/{scene_id}/apply": {
+      "post": {
+        "summary": "应用场景",
+        "operationId": "apply_scene",
+        "parameters": [
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scene Id"
+            }
+          },
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SceneApplyCommand"
+              },
+              "example": {
+                "expected_version": 12,
+                "request_id": "2b126436-4ddc-4f01-83ec-60c062974827",
+                "value": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateSnapshot"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或已清理。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "资源不存在或已清理。"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "硬件写入失败；配置可能已保存，请检查返回 state 和最新状态后决定重试。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Scenes"
+        ],
+        "description": "**最低权限：control。**\n\n请求 `value` 传 `{}`；读取已保存配置并应用到已连接部件。未安装或停用的部件跳过写入。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control"
+      }
+    },
+    "/api/v1/scenes/{scene_id}": {
+      "delete": {
+        "summary": "删除自定义场景",
+        "operationId": "delete_scene",
+        "parameters": [
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scene Id"
+            }
+          },
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或已清理。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "资源不存在或已清理。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Scenes"
+        ],
+        "description": "**最低权限：control。**\n\n内置场景无法删除（409），不存在的场景返回 404。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "control"
+      }
+    },
+    "/api/v1/tokens": {
+      "get": {
+        "summary": "列出 API 访问令牌",
+        "operationId": "tokens",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tokens"
+        ],
+        "description": "**最低权限：admin。**\n\n仅返回名称、权限、到期时间等元信息，不返回令牌原文或哈希。每个客户端可使用独立名称和权限的令牌。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "admin"
+      },
+      "post": {
+        "summary": "创建访问令牌",
+        "operationId": "create_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              },
+              "example": {
+                "name": "Home Assistant",
+                "scope": "control",
+                "days": 90
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "配置版本冲突、部件不可用、操作过于频繁或资源限制；请阅读 detail。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tokens"
+        ],
+        "description": "**最低权限：admin。**\n\n可创建 read 或 control 令牌，有效期 1–365 天，总数上限 32。完整 token 仅在本次响应中返回。admin 权限只由网页登录会话提供。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "admin",
+        "parameters": [
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ]
+      }
+    },
+    "/api/v1/tokens/{token_id}": {
+      "delete": {
+        "summary": "撤销访问令牌",
+        "operationId": "revoke_token",
+        "parameters": [
+          {
+            "name": "token_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token Id"
+            }
+          },
+          {
+            "name": "X-Pi-Control",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "请求带有网页登录 Cookie 时，写操作必须提供；仅 Bearer 认证时无需此头。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数、请求体结构或业务字段校验失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "参数、请求体结构或业务字段校验失败。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足、跨来源写入，或 Cookie 请求缺少 X-Pi-Control: 1。"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "声明的请求体超过 32 KiB。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "声明的请求体超过 32 KiB。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tokens"
+        ],
+        "description": "**最低权限：admin。**\n\n撤销后该令牌无法继续调用；重复调用返回成功。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/export/events.csv": {
+      "get": {
+        "summary": "导出事件 CSV",
+        "operationId": "export",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "id,timestamp,kind,source,outcome,error\n1,1790596800.0,fan,example-client,success,\n"
+              }
+            }
+          },
+          "400": {
+            "description": "Host 不被允许。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "Host 不被允许。"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭据缺失、无效或已过期。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "凭据缺失、无效或已过期。"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，或浏览器来源 / 校验头不符合要求。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "detail": "权限不足，或浏览器来源 / 校验头不符合要求。"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "History"
+        ],
+        "description": "**最低权限：read。**\n\n导出当前保留的事件。UTF-8 CSV 带 BOM，列为 id、timestamp、kind、source、outcome、error。",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Command": {
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Version"
+          },
+          "request_id": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 8,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Request Id"
+          },
+          "value": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_version",
+          "request_id",
+          "value"
+        ],
+        "title": "Command"
+      },
+      "Fan": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "manual"
+            ],
+            "title": "Mode",
+            "type": "string",
+            "description": "auto 自动温控，manual 手动档位。"
+          },
+          "level": {
+            "default": 4,
+            "maximum": 10,
+            "minimum": 0,
+            "title": "Level",
+            "type": "integer",
+            "description": "手动模式档位：0 关闭，1–10 从慢到快。"
+          },
+          "curve": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "maxItems": 8,
+            "minItems": 2,
+            "title": "Curve",
+            "type": "array",
+            "description": "2–8 个温控点，温度严格递增，档位不递减；自动模式使用。"
+          }
+        },
+        "title": "Fan",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HardwareCommand": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "description": "GET /hardware 返回的 revision，与控制配置版本独立。"
+          },
+          "value": {
+            "$ref": "#/components/schemas/HardwareConfig"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "value"
+        ],
+        "title": "HardwareCommand"
+      },
+      "HardwareConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "cube": {
+            "default": "auto",
+            "title": "Cube",
+            "type": "string",
+            "description": "auto、off 或扫描到的 i2c-N@0x0e。"
+          },
+          "oled": {
+            "default": "auto",
+            "title": "Oled",
+            "type": "string",
+            "description": "auto、off 或扫描到的 i2c-N@0x3c / i2c-N@0x3d。"
+          },
+          "case_fan": {
+            "default": true,
+            "title": "Case Fan",
+            "type": "boolean",
+            "description": "是否管理机箱风扇。"
+          },
+          "lights": {
+            "default": true,
+            "title": "Lights",
+            "type": "boolean",
+            "description": "是否管理 RGB 灯条。"
+          },
+          "screen": {
+            "default": true,
+            "title": "Screen",
+            "type": "boolean",
+            "description": "是否管理 OLED 屏幕。"
+          }
+        },
+        "title": "HardwareConfig",
+        "type": "object"
+      },
+      "Lights": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "effect": {
+            "default": "static",
+            "enum": [
+              "static",
+              "rainbow",
+              "chase",
+              "native_breathe"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "native_color": {
+            "default": 1,
+            "maximum": 6,
+            "minimum": 0,
+            "title": "Native Color",
+            "type": "integer",
+            "description": "原厂颜色编号：0 红、1 绿、2 蓝、3 黄、4 紫、5 青、6 白。"
+          },
+          "native_speed": {
+            "default": 1,
+            "maximum": 3,
+            "minimum": 1,
+            "title": "Native Speed",
+            "type": "integer",
+            "description": "原厂呼吸速度：1 慢、2 中、3 快。"
+          },
+          "brightness": {
+            "default": 35,
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Brightness",
+            "type": "integer",
+            "description": "软件灯效整体亮度，0–100%；原厂呼吸不使用此字段。"
+          },
+          "speed": {
+            "default": 1,
+            "maximum": 3,
+            "minimum": 0.2,
+            "title": "Speed",
+            "type": "number",
+            "description": "软件动画速度倍数；原厂呼吸使用 native_speed。"
+          },
+          "colors": {
+            "items": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "maxItems": 14,
+            "minItems": 14,
+            "title": "Colors",
+            "type": "array",
+            "description": "恰好 14 个 #RRGGBB 颜色，对应索引 0–13。"
+          }
+        },
+        "title": "Lights",
+        "type": "object"
+      },
+      "Login": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Password",
+            "format": "password",
+            "writeOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "Login"
+      },
+      "Oled": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "system",
+            "enum": [
+              "system",
+              "clock",
+              "text",
+              "pixel",
+              "carousel"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "text": {
+            "default": "你好，树莓派\nPI CONTROL",
+            "maxLength": 240,
+            "title": "Text",
+            "type": "string",
+            "description": "最多 240 字符，支持换行。"
+          },
+          "font_size": {
+            "default": 12,
+            "maximum": 24,
+            "minimum": 8,
+            "title": "Font Size",
+            "type": "integer"
+          },
+          "x": {
+            "default": 0,
+            "maximum": 127,
+            "minimum": 0,
+            "title": "X",
+            "type": "integer",
+            "description": "左上角水平偏移，单位像素。"
+          },
+          "y": {
+            "default": 0,
+            "maximum": 31,
+            "minimum": 0,
+            "title": "Y",
+            "type": "integer",
+            "description": "左上角垂直偏移，单位像素。"
+          },
+          "invert": {
+            "default": false,
+            "title": "Invert",
+            "type": "boolean"
+          },
+          "contrast": {
+            "default": 160,
+            "maximum": 255,
+            "minimum": 0,
+            "title": "Contrast",
+            "type": "integer",
+            "description": "屏幕对比度 0–255。"
+          },
+          "pixels": {
+            "default": "",
+            "maxLength": 684,
+            "title": "Pixels",
+            "type": "string",
+            "description": "Base64 编码的 512 字节行优先单色位图；每行 16 字节，高位在左。pixel 模式必填，其他模式可传空字符串。"
+          }
+        },
+        "title": "Oled",
+        "type": "object"
+      },
+      "PeerAddress": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "PeerAddress"
+      },
+      "Point": {
+        "additionalProperties": false,
+        "properties": {
+          "temperature": {
+            "maximum": 80,
+            "minimum": 25,
+            "title": "Temperature",
+            "type": "integer"
+          },
+          "level": {
+            "maximum": 10,
+            "minimum": 1,
+            "title": "Level",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "temperature",
+          "level"
+        ],
+        "title": "Point",
+        "type": "object"
+      },
+      "SceneRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "icon": {
+            "type": "string",
+            "enum": [
+              "leaf",
+              "sun",
+              "moon",
+              "sparkles",
+              "custom"
+            ],
+            "title": "Icon",
+            "default": "custom"
+          },
+          "config": {
+            "$ref": "#/components/schemas/Settings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "config"
+        ],
+        "title": "SceneRequest"
+      },
+      "Settings": {
+        "additionalProperties": false,
+        "properties": {
+          "fan": {
+            "$ref": "#/components/schemas/Fan"
+          },
+          "lights": {
+            "$ref": "#/components/schemas/Lights"
+          },
+          "oled": {
+            "$ref": "#/components/schemas/Oled"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 14,
+            "minItems": 14,
+            "title": "Labels",
+            "type": "array"
+          }
+        },
+        "title": "Settings",
+        "type": "object"
+      },
+      "TokenRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Name",
+            "description": "可识别的客户端名称，例如 Home Assistant 或个人脚本。"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "control"
+            ],
+            "title": "Scope",
+            "default": "read",
+            "description": "read 只读；control 包含查询和控制权限。"
+          },
+          "days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Days",
+            "default": 90,
+            "description": "有效期天数，默认 90。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TokenRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "FanCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 0,
+            "title": "Expected Version",
+            "type": "integer",
+            "description": "最近 GET /status 返回的 version；冲突返回 409。"
+          },
+          "request_id": {
+            "maxLength": 80,
+            "minLength": 8,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Request Id",
+            "type": "string",
+            "description": "8–80 个字母、数字、下划线或连字符。推荐 UUID。历史保留期内，同一调用者重试相同资源和配置可复用；不同操作必须使用新值。"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Fan"
+          }
+        },
+        "required": [
+          "expected_version",
+          "request_id",
+          "value"
+        ],
+        "title": "FanCommand",
+        "type": "object"
+      },
+      "LightsCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 0,
+            "title": "Expected Version",
+            "type": "integer",
+            "description": "最近 GET /status 返回的 version；冲突返回 409。"
+          },
+          "request_id": {
+            "maxLength": 80,
+            "minLength": 8,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Request Id",
+            "type": "string",
+            "description": "8–80 个字母、数字、下划线或连字符。推荐 UUID。历史保留期内，同一调用者重试相同资源和配置可复用；不同操作必须使用新值。"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Lights"
+          }
+        },
+        "required": [
+          "expected_version",
+          "request_id",
+          "value"
+        ],
+        "title": "LightsCommand",
+        "type": "object"
+      },
+      "OledCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 0,
+            "title": "Expected Version",
+            "type": "integer",
+            "description": "最近 GET /status 返回的 version；冲突返回 409。"
+          },
+          "request_id": {
+            "maxLength": 80,
+            "minLength": 8,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Request Id",
+            "type": "string",
+            "description": "8–80 个字母、数字、下划线或连字符。推荐 UUID。历史保留期内，同一调用者重试相同资源和配置可复用；不同操作必须使用新值。"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Oled"
+          }
+        },
+        "required": [
+          "expected_version",
+          "request_id",
+          "value"
+        ],
+        "title": "OledCommand",
+        "type": "object"
+      },
+      "LightColor": {
+        "additionalProperties": false,
+        "properties": {
+          "color": {
+            "examples": [
+              "#ff8800"
+            ],
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Color",
+            "type": "string"
+          }
+        },
+        "required": [
+          "color"
+        ],
+        "title": "LightColor",
+        "type": "object"
+      },
+      "LightColorCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 0,
+            "title": "Expected Version",
+            "type": "integer",
+            "description": "最近 GET /status 返回的 version；冲突返回 409。"
+          },
+          "request_id": {
+            "maxLength": 80,
+            "minLength": 8,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Request Id",
+            "type": "string",
+            "description": "8–80 个字母、数字、下划线或连字符。推荐 UUID。历史保留期内，同一调用者重试相同资源和配置可复用；不同操作必须使用新值。"
+          },
+          "value": {
+            "$ref": "#/components/schemas/LightColor"
+          }
+        },
+        "required": [
+          "expected_version",
+          "request_id",
+          "value"
+        ],
+        "title": "LightColorCommand",
+        "type": "object"
+      },
+      "LabelsValue": {
+        "additionalProperties": false,
+        "properties": {
+          "labels": {
+            "items": {
+              "maxLength": 24,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 14,
+            "minItems": 14,
+            "title": "Labels",
+            "type": "array"
+          }
+        },
+        "required": [
+          "labels"
+        ],
+        "title": "LabelsValue",
+        "type": "object"
+      },
+      "LabelsCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 0,
+            "title": "Expected Version",
+            "type": "integer",
+            "description": "最近 GET /status 返回的 version；冲突返回 409。"
+          },
+          "request_id": {
+            "maxLength": 80,
+            "minLength": 8,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Request Id",
+            "type": "string",
+            "description": "8–80 个字母、数字、下划线或连字符。推荐 UUID。历史保留期内，同一调用者重试相同资源和配置可复用；不同操作必须使用新值。"
+          },
+          "value": {
+            "$ref": "#/components/schemas/LabelsValue"
+          }
+        },
+        "required": [
+          "expected_version",
+          "request_id",
+          "value"
+        ],
+        "title": "LabelsCommand",
+        "type": "object"
+      },
+      "SceneApplyCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 0,
+            "title": "Expected Version",
+            "type": "integer",
+            "description": "最近 GET /status 返回的 version；冲突返回 409。"
+          },
+          "request_id": {
+            "maxLength": 80,
+            "minLength": 8,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Request Id",
+            "type": "string",
+            "description": "8–80 个字母、数字、下划线或连字符。推荐 UUID。历史保留期内，同一调用者重试相同资源和配置可复用；不同操作必须使用新值。"
+          },
+          "value": {
+            "additionalProperties": true,
+            "description": "传入空对象 {}；配置从已保存的场景读取。",
+            "examples": [
+              {}
+            ],
+            "title": "Value",
+            "type": "object"
+          }
+        },
+        "required": [
+          "expected_version",
+          "request_id",
+          "value"
+        ],
+        "title": "SceneApplyCommand",
+        "type": "object"
+      },
+      "AnimationState": {
+        "additionalProperties": true,
+        "properties": {
+          "write_fps": {
+            "title": "Write Fps",
+            "type": "number"
+          },
+          "target_fps": {
+            "title": "Target Fps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "write_fps",
+          "target_fps"
+        ],
+        "title": "AnimationState",
+        "type": "object"
+      },
+      "AppliedFan": {
+        "additionalProperties": true,
+        "properties": {
+          "level": {
+            "description": "0 关闭，1–10 从慢到快。",
+            "maximum": 10,
+            "minimum": 0,
+            "title": "Level",
+            "type": "integer"
+          },
+          "protocol_code": {
+            "description": "底层协议代码；业务集成请使用 level。",
+            "title": "Protocol Code",
+            "type": "integer"
+          },
+          "written_at": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Written At",
+            "type": "number"
+          },
+          "rpm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "机箱风扇无转速反馈，当前为 null。",
+            "title": "Rpm"
+          }
+        },
+        "required": [
+          "level",
+          "protocol_code",
+          "written_at",
+          "rpm"
+        ],
+        "title": "AppliedFan",
+        "type": "object"
+      },
+      "AppliedLights": {
+        "additionalProperties": true,
+        "properties": {
+          "colors": {
+            "description": "软件效果为最近写入颜色；原厂呼吸为固件调色板颜色示意。",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 14,
+            "minItems": 14,
+            "title": "Colors",
+            "type": "array"
+          },
+          "written_at": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Written At",
+            "type": "number"
+          },
+          "frame": {
+            "title": "Frame",
+            "type": "integer"
+          },
+          "engine": {
+            "enum": [
+              "firmware",
+              "software"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "color_source": {
+            "enum": [
+              "firmware-palette",
+              "written-frame"
+            ],
+            "title": "Color Source",
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/Lights"
+          },
+          "phase_seconds": {
+            "title": "Phase Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "colors",
+          "written_at",
+          "frame",
+          "engine",
+          "color_source",
+          "parameters",
+          "phase_seconds"
+        ],
+        "title": "AppliedLights",
+        "type": "object"
+      },
+      "AppliedState": {
+        "additionalProperties": true,
+        "properties": {
+          "fan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppliedFan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lights": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppliedLights"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "oled": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OledFrame"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fan",
+          "lights",
+          "oled"
+        ],
+        "title": "AppliedState",
+        "type": "object"
+      },
+      "CpuFanPolicy": {
+        "additionalProperties": true,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "max_state": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max State"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/CpuFanStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "available",
+          "state",
+          "max_state",
+          "steps"
+        ],
+        "title": "CpuFanPolicy",
+        "type": "object"
+      },
+      "CpuFanStep": {
+        "additionalProperties": true,
+        "properties": {
+          "temperature": {
+            "title": "Temperature",
+            "type": "number"
+          },
+          "hysteresis": {
+            "title": "Hysteresis",
+            "type": "number"
+          },
+          "pwm": {
+            "title": "Pwm",
+            "type": "integer"
+          },
+          "percent": {
+            "title": "Percent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "temperature",
+          "hysteresis",
+          "pwm",
+          "percent"
+        ],
+        "title": "CpuFanStep",
+        "type": "object"
+      },
+      "DeviceIdentity": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "description": "设备持久化 UUID。",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "description": "服务版本。",
+            "title": "Version",
+            "type": "string"
+          },
+          "product": {
+            "const": "pi-control",
+            "title": "Product",
+            "type": "string"
+          },
+          "protocol": {
+            "const": 1,
+            "title": "Protocol",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "product",
+          "protocol"
+        ],
+        "title": "DeviceIdentity",
+        "type": "object"
+      },
+      "FanPreset": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "config": {
+            "$ref": "#/components/schemas/Fan"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "config"
+        ],
+        "title": "FanPreset",
+        "type": "object"
+      },
+      "HardwareCandidate": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "examples": [
+              "i2c-1@0x0e"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "bus": {
+            "title": "Bus",
+            "type": "integer"
+          },
+          "address": {
+            "examples": [
+              "0x0e"
+            ],
+            "title": "Address",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "cube",
+              "oled"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "firmware": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Firmware"
+          }
+        },
+        "required": [
+          "id",
+          "bus",
+          "address",
+          "kind",
+          "name"
+        ],
+        "title": "HardwareCandidate",
+        "type": "object"
+      },
+      "HardwareInventory": {
+        "additionalProperties": true,
+        "properties": {
+          "revision": {
+            "description": "硬件连接配置版本，与 status.version 独立。",
+            "title": "Revision",
+            "type": "integer"
+          },
+          "config": {
+            "$ref": "#/components/schemas/HardwareConfig"
+          },
+          "scanned_at": {
+            "anyOf": [
+              {
+                "description": "Unix 时间戳，单位为秒，可含小数。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanned At"
+          },
+          "buses": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Buses",
+            "type": "array"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/HardwareCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "components": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HardwarePart"
+            },
+            "description": "部件键：cube、fan、lights、oled、cpu_fan。",
+            "title": "Components",
+            "type": "object"
+          },
+          "scan_errors": {
+            "items": {
+              "$ref": "#/components/schemas/ScanError"
+            },
+            "title": "Scan Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "revision",
+          "config",
+          "scanned_at",
+          "buses",
+          "candidates",
+          "components",
+          "scan_errors"
+        ],
+        "title": "HardwareInventory",
+        "type": "object"
+      },
+      "HardwarePart": {
+        "additionalProperties": true,
+        "properties": {
+          "status": {
+            "enum": [
+              "connected",
+              "not-installed",
+              "disabled",
+              "disconnected",
+              "ambiguous",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HardwareCandidate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "physical_feedback": {
+            "description": "是否支持实际传感器反馈；连接到扩展板不等于能检测其风扇或灯条是否插好。",
+            "title": "Physical Feedback",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "device",
+          "physical_feedback"
+        ],
+        "title": "HardwarePart",
+        "type": "object"
+      },
+      "HardwareState": {
+        "additionalProperties": true,
+        "properties": {
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "object"
+          },
+          "simulate": {
+            "title": "Simulate",
+            "type": "boolean"
+          },
+          "connection": {
+            "$ref": "#/components/schemas/HardwareInventory"
+          },
+          "rgb_count": {
+            "const": 14,
+            "title": "Rgb Count",
+            "type": "integer"
+          },
+          "oled_size": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Oled Size",
+            "type": "array"
+          }
+        },
+        "required": [
+          "connected",
+          "errors",
+          "simulate",
+          "connection",
+          "rgb_count",
+          "oled_size"
+        ],
+        "title": "HardwareState",
+        "type": "object"
+      },
+      "Identity": {
+        "additionalProperties": true,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "read",
+              "control",
+              "admin"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "scope"
+        ],
+        "title": "Identity",
+        "type": "object"
+      },
+      "LiveMetrics": {
+        "additionalProperties": true,
+        "properties": {
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CPU 温度，摄氏度。",
+            "title": "Temperature"
+          },
+          "cpu_fan_rpm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Fan Rpm"
+          },
+          "cpu_fan_pwm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Fan Pwm"
+          },
+          "cpu_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Percent"
+          },
+          "memory_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Percent"
+          },
+          "storage_used_percent": {
+            "title": "Storage Used Percent",
+            "type": "number"
+          },
+          "storage_free_gb": {
+            "title": "Storage Free Gb",
+            "type": "number"
+          },
+          "sampled_at": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Sampled At",
+            "type": "number"
+          }
+        },
+        "required": [
+          "temperature",
+          "cpu_fan_rpm",
+          "cpu_fan_pwm",
+          "cpu_percent",
+          "memory_percent",
+          "storage_used_percent",
+          "storage_free_gb",
+          "sampled_at"
+        ],
+        "title": "LiveMetrics",
+        "type": "object"
+      },
+      "OledFrame": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "width": {
+            "const": 128,
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "const": 32,
+            "title": "Height",
+            "type": "integer"
+          },
+          "pixels": {
+            "description": "512 字节的行优先单色位图，Base64 编码，每字节高位对应左侧像素。",
+            "title": "Pixels",
+            "type": "string"
+          },
+          "pixel_hash": {
+            "title": "Pixel Hash",
+            "type": "string"
+          },
+          "hardware_hash": {
+            "title": "Hardware Hash",
+            "type": "string"
+          },
+          "written_at": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Written At",
+            "type": "number"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "width",
+          "height",
+          "pixels",
+          "pixel_hash",
+          "hardware_hash",
+          "written_at",
+          "mode"
+        ],
+        "title": "OledFrame",
+        "type": "object"
+      },
+      "Retention": {
+        "additionalProperties": true,
+        "properties": {
+          "metrics_days": {
+            "title": "Metrics Days",
+            "type": "integer"
+          },
+          "oled_max_frames": {
+            "title": "Oled Max Frames",
+            "type": "integer"
+          },
+          "oled_max_days": {
+            "title": "Oled Max Days",
+            "type": "integer"
+          },
+          "events_max": {
+            "title": "Events Max",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "metrics_days",
+          "oled_max_frames",
+          "oled_max_days",
+          "events_max"
+        ],
+        "title": "Retention",
+        "type": "object"
+      },
+      "ScanError": {
+        "additionalProperties": true,
+        "properties": {
+          "bus": {
+            "title": "Bus",
+            "type": "integer"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Address"
+          }
+        },
+        "required": [
+          "bus",
+          "error"
+        ],
+        "title": "ScanError",
+        "type": "object"
+      },
+      "StateSnapshot": {
+        "additionalProperties": true,
+        "properties": {
+          "demo": {
+            "default": false,
+            "description": "服务是否使用免登录演示模式；硬件是否模拟以 hardware.simulate 为准。",
+            "title": "Demo",
+            "type": "boolean"
+          },
+          "version": {
+            "description": "控制配置版本；提交新操作时传入 expected_version。",
+            "title": "Version",
+            "type": "integer"
+          },
+          "config": {
+            "$ref": "#/components/schemas/Settings",
+            "description": "已持久化的目标配置。"
+          },
+          "applied": {
+            "$ref": "#/components/schemas/AppliedState",
+            "description": "最近成功写入硬件的状态；不等同于所有物理效果的传感器反馈。"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/LiveMetrics"
+          },
+          "hardware": {
+            "$ref": "#/components/schemas/HardwareState"
+          },
+          "cpu_fan_policy": {
+            "$ref": "#/components/schemas/CpuFanPolicy"
+          },
+          "fan_presets": {
+            "items": {
+              "$ref": "#/components/schemas/FanPreset"
+            },
+            "title": "Fan Presets",
+            "type": "array"
+          },
+          "animation": {
+            "$ref": "#/components/schemas/AnimationState"
+          },
+          "safety_override": {
+            "title": "Safety Override",
+            "type": "boolean"
+          },
+          "server_time": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Server Time",
+            "type": "number"
+          },
+          "started_at": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Started At",
+            "type": "number"
+          },
+          "frames_sent": {
+            "title": "Frames Sent",
+            "type": "integer"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/Retention"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Identity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "version",
+          "config",
+          "applied",
+          "metrics",
+          "hardware",
+          "cpu_fan_policy",
+          "fan_presets",
+          "animation",
+          "safety_override",
+          "server_time",
+          "started_at",
+          "frames_sent",
+          "retention"
+        ],
+        "title": "StateSnapshot",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            ],
+            "description": "错误说明；请求结构校验失败时为 FastAPI 校验错误数组。",
+            "title": "Detail"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StateSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "部分硬件写入失败返回当前状态；其他错误可不包含此字段。"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "PeerDevice": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "online": {
+            "title": "Online",
+            "type": "boolean"
+          },
+          "last_seen": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Last Seen",
+            "type": "number"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Saved"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "连接结果为当前设备时返回 true。",
+            "title": "Current"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "url",
+          "online",
+          "last_seen"
+        ],
+        "title": "PeerDevice",
+        "type": "object"
+      },
+      "DeviceDirectory": {
+        "additionalProperties": true,
+        "properties": {
+          "service_mode": {
+            "description": "本服务控制模拟硬件或宿主硬件；设备目录可在两种模式下记住其他 Pi Control。",
+            "enum": [
+              "demo",
+              "hardware"
+            ],
+            "title": "Service Mode",
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/DeviceIdentity"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PeerDevice"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "scanned_at": {
+            "anyOf": [
+              {
+                "description": "Unix 时间戳，单位为秒，可含小数。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanned At"
+          },
+          "discovery_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discovery Error"
+          }
+        },
+        "required": [
+          "service_mode",
+          "current",
+          "items",
+          "scanned_at",
+          "discovery_error"
+        ],
+        "title": "DeviceDirectory",
+        "type": "object"
+      },
+      "PreviewFrame": {
+        "additionalProperties": true,
+        "properties": {
+          "pixels": {
+            "description": "与 OledFrame.pixels 相同的行优先位图。",
+            "title": "Pixels",
+            "type": "string"
+          },
+          "width": {
+            "const": 128,
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "const": 32,
+            "title": "Height",
+            "type": "integer"
+          },
+          "preview": {
+            "const": true,
+            "title": "Preview",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pixels",
+          "width",
+          "height",
+          "preview"
+        ],
+        "title": "PreviewFrame",
+        "type": "object"
+      },
+      "EventRecord": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ts": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Ts",
+            "type": "number"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "before": {
+            "title": "Before"
+          },
+          "after": {
+            "title": "After"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "kind",
+          "source",
+          "outcome",
+          "error",
+          "before",
+          "after"
+        ],
+        "title": "EventRecord",
+        "type": "object"
+      },
+      "EventPage": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "下一次请求的 before；空页返回 null。",
+            "title": "Next"
+          }
+        },
+        "required": [
+          "items",
+          "next"
+        ],
+        "title": "EventPage",
+        "type": "object"
+      },
+      "MetricRecord": {
+        "additionalProperties": true,
+        "properties": {
+          "ts": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Ts",
+            "type": "number"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "cpu_fan_rpm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Fan Rpm"
+          },
+          "cpu_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Percent"
+          },
+          "memory_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Percent"
+          },
+          "case_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Level"
+          }
+        },
+        "required": [
+          "ts",
+          "temperature",
+          "cpu_fan_rpm",
+          "cpu_percent",
+          "memory_percent",
+          "case_level"
+        ],
+        "title": "MetricRecord",
+        "type": "object"
+      },
+      "MetricHistory": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MetricRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MetricHistory",
+        "type": "object"
+      },
+      "FrameRecord": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ts": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Ts",
+            "type": "number"
+          },
+          "pixel_hash": {
+            "title": "Pixel Hash",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "pixel_hash",
+          "mode"
+        ],
+        "title": "FrameRecord",
+        "type": "object"
+      },
+      "FramePage": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FrameRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          }
+        },
+        "required": [
+          "items",
+          "next"
+        ],
+        "title": "FramePage",
+        "type": "object"
+      },
+      "HistoricalFrame": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ts": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Ts",
+            "type": "number"
+          },
+          "pixel_hash": {
+            "title": "Pixel Hash",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "pixels": {
+            "description": "128×32 单色位图，格式同 OledFrame.pixels。",
+            "title": "Pixels",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "pixel_hash",
+          "mode",
+          "pixels"
+        ],
+        "title": "HistoricalFrame",
+        "type": "object"
+      },
+      "Scene": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "icon": {
+            "title": "Icon",
+            "type": "string"
+          },
+          "config": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "builtin": {
+            "enum": [
+              0,
+              1
+            ],
+            "title": "Builtin",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "icon",
+          "config",
+          "builtin"
+        ],
+        "title": "Scene",
+        "type": "object"
+      },
+      "SceneList": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Scene"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SceneList",
+        "type": "object"
+      },
+      "TokenMetadata": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "read",
+              "control"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "created": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Created",
+            "type": "number"
+          },
+          "expires": {
+            "description": "Unix 时间戳，单位为秒，可含小数。",
+            "title": "Expires",
+            "type": "number"
+          },
+          "last_used": {
+            "anyOf": [
+              {
+                "description": "Unix 时间戳，单位为秒，可含小数。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scope",
+          "created",
+          "expires",
+          "last_used"
+        ],
+        "title": "TokenMetadata",
+        "type": "object"
+      },
+      "TokenList": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TokenMetadata"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TokenList",
+        "type": "object"
+      },
+      "TokenCreated": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "token": {
+            "description": "完整令牌，只在创建响应中返回一次。",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "token"
+        ],
+        "title": "TokenCreated",
+        "type": "object"
+      },
+      "CreatedId": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "CreatedId",
+        "type": "object"
+      },
+      "OkResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "OkResponse",
+        "type": "object"
+      },
+      "LoginResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "title": "LoginResponse",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "ReadyResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "status": {
+            "enum": [
+              "ready",
+              "hardware-unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ReadyResponse",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "在设置中创建的 pc_ 令牌。Authorize 输入完整令牌，无需 Bearer 前缀。"
+      },
+      "SessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "pi_control_session",
+        "description": "通过 /auth/login 创建的网页登录会话，浏览器自动携带。写请求同时需要 X-Pi-Control: 1。"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Status",
+      "description": "服务健康、设备标识与当前状态"
+    },
+    {
+      "name": "Fans",
+      "description": "机箱风扇控制；CPU 风扇由系统管理"
+    },
+    {
+      "name": "Lights",
+      "description": "14 颗 RGB 灯珠与原厂灯效"
+    },
+    {
+      "name": "OLED",
+      "description": "OLED 画面、预览与历史帧"
+    },
+    {
+      "name": "History",
+      "description": "事件、性能指标与导出"
+    },
+    {
+      "name": "Scenes",
+      "description": "保存和应用完整配置"
+    },
+    {
+      "name": "Hardware",
+      "description": "本机部件发现和连接"
+    },
+    {
+      "name": "Devices",
+      "description": "发现并记住其他树莓派"
+    },
+    {
+      "name": "Auth",
+      "description": "网页登录会话"
+    },
+    {
+      "name": "Tokens",
+      "description": "为客户端创建和撤销访问令牌"
+    }
+  ],
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Your Pi Control service"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "SessionCookie": []
+    }
+  ],
+  "x-websocket": {
+    "url": "/api/v1/live",
+    "message": {
+      "$ref": "#/components/schemas/StateSnapshot"
+    },
+    "interval_seconds": 0.5,
+    "authentication": "Bearer header or same-origin session cookie",
+    "close_codes": {
+      "1008": "未认证、认证已失效，或来源 / Host 不被允许。"
+    }
+  }
+}

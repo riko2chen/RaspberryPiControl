@@ -1,0 +1,27 @@
+name: pi-control-demo
+services:
+  pi-control:
+    image: pi-control:1.5.0
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PC_BIND:-127.0.0.1}:${PC_PORT:-8080}:8080"
+    environment:
+      TZ: Asia/Shanghai
+      PC_SIMULATE: "1"
+      PC_DEMO: "1"
+      PC_DEVICE_NAME: "CUBE · Docker 演示"
+    volumes:
+      - demo-data:/var/lib/pi-control
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    pids_limit: 128
+    mem_limit: 512m
+    stop_grace_period: 25s
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+volumes:
+  demo-data:
