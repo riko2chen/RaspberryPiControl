@@ -39,7 +39,7 @@ cd RaspberryPiControl
 docker compose up -d --build --wait
 ```
 
-打开 **http://localhost:8080**，默认进入演示设备。设置会保留在 Docker 数据卷里。
+打开 **[ http://localhost:8080 ](http://localhost:8080)** ，默认进入演示设备。设置会保留在 Docker 数据卷里。
 
 在“设备连接”里可添加已经安装 Pi Control 的树莓派。连接真实设备后，右上角“切换设备”可以返回设备列表。
 
