@@ -1,10 +1,20 @@
 # Pi Control
 
+[![Pi Control · 树莓派灯光、风扇与 OLED 控制中心](docs/media/pi-control-og.png)](https://picontrol.rikolab.com)
+
 把树莓派的灯光、风扇和 OLED 放进一个可视化控制台。
 
 **[在线预览 ↗](https://picontrol.rikolab.com)** · [接入指南](deploy/INSTALL.md) · [API 文档](https://picontrol.rikolab.com/api-docs.html)
 
 无需树莓派就能体验：旋转和展开 3D 机箱、切换灯效、调整风扇、编辑 OLED。在线预览为纯静态演示，操作只保存在当前浏览器，不连接真实设备。
+
+## 看看演示
+
+25 秒，看看三维机箱如何旋转、放大和展开。
+
+https://github.com/user-attachments/assets/a4b59939-f189-4fb2-aad8-9bd871ecdcc2
+
+[打开视频播放页 ↗](https://picontrol.rikolab.com/demo.html) · [下载 MP4](docs/media/pi-control-demo.mp4) · [亲自体验 ↗](https://picontrol.rikolab.com)
 
 ## 可以做什么
 

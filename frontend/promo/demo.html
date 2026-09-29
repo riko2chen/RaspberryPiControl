@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="用 25 秒看看 Pi Control：旋转、放大与展开 CUBE Pi 三维机箱。">
+  <title>Pi Control · 演示视频</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f5f7fc; color: #19223a; font: 16px/1.7 system-ui, sans-serif; }
+    main { width: min(1200px, calc(100% - 40px)); margin: 48px auto; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 32px; }
+    .brand { color: #465deb; font-weight: 750; text-decoration: none; font-size: 23px; }
+    h1 { font-size: clamp(30px, 5vw, 48px); letter-spacing: -.04em; line-height: 1.2; margin: 0 0 12px; }
+    p { color: #606c80; margin: 12px 0 24px; }
+    video { display: block; width: 100%; aspect-ratio: 1920 / 994; background: #e8edf4; border: 1px solid #d9e0ec; border-radius: 16px; box-shadow: 0 18px 48px #21335c12; }
+    .button { display: inline-block; padding: 9px 18px; border-radius: 10px; background: #465deb; color: white; text-decoration: none; font-weight: 650; }
+    a { color: #4054c9; text-underline-offset: 3px; }
+    a:focus-visible { outline: 3px solid #8999ff; outline-offset: 4px; }
+    footer { display: flex; flex-wrap: wrap; gap: 10px 24px; margin-top: 24px; font-size: 14px; color: #69768b; }
+    @media (max-width: 600px) { main { margin-top: 24px; } header { align-items: flex-start; } .button { font-size: 14px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header><a class="brand" href="./">Pi Control</a><a class="button" href="./">亲自体验 ↗</a></header>
+    <h1>从外观，到每一层细节。</h1>
+    <p id="video-description">25 秒演示：旋转机箱、放大查看接口，再展开部件，探索 CUBE Pi 的内部结构。视频无音频。</p>
+    <video controls playsinline preload="metadata" poster="./media/pi-control-demo-poster.jpg" aria-label="Pi Control 三维总览演示" aria-describedby="video-description">
+      <source src="./media/pi-control-demo.mp4" type="video/mp4">
+      你的浏览器暂不支持视频播放，可<a href="./media/pi-control-demo.mp4">下载 MP4</a>观看。
+    </video>
+    <footer><span>演示设备 · 模拟数据</span><a href="./media/pi-control-demo.mp4" download>下载视频</a><a href="https://github.com/riko2chen/RaspberryPiControl">GitHub 项目 ↗</a></footer>
+  </main>
+</body>
+</html>

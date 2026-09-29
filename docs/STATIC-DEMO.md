@@ -18,6 +18,14 @@ python3 scripts/preview-demo.py
 
 资源路径为相对路径，支持根域名和仓库子目录。字体、模型和 API 文档都随站点打包。API 文档为只读参考，不提供在线执行入口。
 
+演示还包含 `demo.html` 视频播放页与分享卡片。它们从 `docs/media/` 打包，只进入静态演示，Docker 服务不包含这些宣传媒体。若发布到自己的域名或 GitHub Pages，构建时设置公开站点地址，让分享图片和规范链接指向自己的站点：
+
+```sh
+PI_CONTROL_SITE_URL=https://example.github.io/RaspberryPiControl/ npm --prefix frontend run build:demo
+```
+
+默认地址是 `https://picontrol.rikolab.com/`。该变量只能填写公开网址，不要包含凭据或访问令牌。
+
 ## Cloudflare
 
 当前站点使用 **Workers Static Assets**，没有自定义 Worker 业务代码、数据库绑定或设备代理。通过已登录的 `cf` CLI 部署：
